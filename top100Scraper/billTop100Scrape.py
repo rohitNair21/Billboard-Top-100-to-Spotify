@@ -2,9 +2,11 @@ from bs4 import BeautifulSoup
 import requests
 import re
 import openpyxl
+from openpyxl import Workbook, load_workbook
 import json
 import datetime
 from scrapeID import spotifyID, spotifyToken
+from openpyxl.utils import get_column_letter
 currentTime = datetime.datetime.now()
 
 class scrapeAndMake:
@@ -17,7 +19,7 @@ class scrapeAndMake:
         excel = openpyxl.Workbook()
         sheet = excel.active
         sheet.title = 'Billboard Top 100'
-        sheet.append(["BT100:{}/{}/{}".format(currentTime.day,currentTime.month, currentTime.year),'Song','Artist'])
+        sheet.append(["{}/{}/{}".format(currentTime.day,currentTime.month, currentTime.year),'Song','Artist'])
 
         try:
             source = requests.get("https://www.billboard.com/charts/hot-100/")
@@ -54,6 +56,7 @@ class scrapeAndMake:
                 )
                 response_json = response.json()
                 return response_json["id"]
+
 
     def getSongs(self, songName, artist):
             query = "https://api.spotify.com/v1/search?q=artist:{}%20track:{}&type=track&offset=0&limit=1".format(
@@ -103,8 +106,69 @@ class scrapeAndMake:
                 }
             )
 
+        self.songInfo.clear()
         response_json = response.json()
         return response_json
+
+    def makePlaylistFromFile(self, fileWb):
+                request_body = json.dumps({
+                "name": "Billboard Top 100: {}".format(fileWb['A1'].value),
+                "description": "The Billboard Top 100 for the specified time range! In descending order.",
+                "public": True})
+
+                query = "https://api.spotify.com/v1/users/{}/playlists".format(
+                spotifyID)
+                response = requests.post(
+                query,
+                data=request_body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer {}".format(spotifyToken)
+                }
+                )
+                response_json = response.json()
+                return response_json["id"]
+        
+    def addSongsFromFile(self, filePath):
+        localWb = load_workbook(filePath)
+        fileWb = localWb.active
+        playlist = self.makePlaylistFromFile(fileWb)
+        col1 = 2
+        colLet1 = get_column_letter(col1)
+        col2 = 3
+        colLet2 = get_column_letter(col2)
+        for row in range(2,102):
+            songName = str(fileWb[colLet1 + str(row)].value)
+            songArtist = str(fileWb[colLet2 + str(row)].value) 
+            firstName = re.split(" Featuring | & | X |, |,| x | with | With ", songArtist)
+            self.songInfo["{}".format(songName)] = {"songName":songName, "artist":songArtist, "uri":self.getSongs(songName,firstName[0])}
+        
+        uri = [] 
+        for song, info in self.songInfo.items():
+            if(info["uri"] is not None):
+                uri.append(info["uri"])
+
+        data = json.dumps(uri)
+
+        query = "https://api.spotify.com/v1/playlists/{}/tracks".format(
+                playlist)
+
+        response = requests.post(
+                query,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer {}".format(spotifyToken)
+                }
+            )
+
+        response_json = response.json()
+        return response_json
+
+
+if __name__ == "__main__":
+    test = scrapeAndMake()
+    test.addSongsFromFile("/Users/rohitnair/billTop100Scrape/top100Scraper/Billboard Top 100.xlsx")
 
         
 
