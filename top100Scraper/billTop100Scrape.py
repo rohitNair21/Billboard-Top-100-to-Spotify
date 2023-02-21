@@ -5,6 +5,7 @@ import openpyxl
 import json
 import datetime
 from scrapeID import spotifyID, spotifyToken
+currentTime = datetime.datetime.now()
 
 class scrapeAndMake:
     def __init__(self):
@@ -16,7 +17,7 @@ class scrapeAndMake:
         excel = openpyxl.Workbook()
         sheet = excel.active
         sheet.title = 'Billboard Top 100'
-        sheet.append(['Rank','Song','Artist'])
+        sheet.append(["BT100:{}/{}/{}".format(currentTime.day,currentTime.month, currentTime.year),'Song','Artist'])
 
         try:
             source = requests.get("https://www.billboard.com/charts/hot-100/")
@@ -28,15 +29,14 @@ class scrapeAndMake:
                 songName = song.find('h3', "c-title").get_text(strip=True)
                 songArtist = song.find('span',class_=re.compile("c-label a-no-trucate")).get_text(strip=True)      
                 sheet.append([songRank, songName, songArtist])
-                songRank = songRank + 1
-                firstName = songArtist.split(" ")
+                firstName = re.split(" Featuring | & | X |, |,| x | with | With ", songArtist)
                 self.songInfo["{}".format(songName)] = {"songName":songName, "artist":songArtist, "uri":self.getSongs(songName,firstName[0])}
+                songRank = songRank + 1
         except Exception as e:
            print("The link is not valid!")
         excel.save("Billboard Top 100.xlsx")
 
     def makePlaylist(self):
-                currentTime = datetime.datetime.now()
                 request_body = json.dumps({
                 "name": "Billboard Top 100: {}/{}/{}".format(currentTime.day,currentTime.month, currentTime.year),
                 "description": "The Billboard Top 100 for the specified time range! In descending order.",
@@ -56,9 +56,9 @@ class scrapeAndMake:
                 return response_json["id"]
 
     def getSongs(self, songName, artist):
-            query = "https://api.spotify.com/v1/search?query=track%3A{}+artist%3A{}&type=track&offset=0&limit=20".format(
-                songName,
-                artist
+            query = "https://api.spotify.com/v1/search?q=artist:{}%20track:{}&type=track&offset=0&limit=1".format(
+                artist,
+                songName
             )
             response = requests.get(
                 query,
@@ -69,10 +69,16 @@ class scrapeAndMake:
             )
             response_json = response.json()
             songs = response_json["tracks"]["items"]
-
-            uri = songs[0]["uri"]
-            if(uri is not None):
-                return uri
+            songNameAppended = songName
+            if(len(songs) !=0):
+                uri = songs[0]["uri"]
+                if(uri is not None):
+                    return uri
+            if(len(songNameAppended) == 0):
+                print("The URI could not be found.")
+            else:
+                songNameAppended = songNameAppended[:-1]
+                return self.getSongs(songNameAppended, artist)
 
     def addSongs(self):
         playlist = self.makePlaylist()
@@ -100,9 +106,6 @@ class scrapeAndMake:
         response_json = response.json()
         return response_json
 
-if __name__ == '__main__':
-    cp = scrapeAndMake()
-    cp.addSongs()
         
 
 
